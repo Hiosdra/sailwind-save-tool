@@ -1,3 +1,4 @@
+mod diagnostics;
 mod error;
 mod models;
 mod saves;
@@ -72,8 +73,14 @@ fn create_snapshot(
         message: error.to_string(),
         context: Default::default(),
     })?;
-    snapshots::create_manual_snapshot(Path::new(&save_directory), &app_data, slot, prune_oldest)
-        .map_err(Into::into)
+    let result = snapshots::create_manual_snapshot(
+        Path::new(&save_directory),
+        &app_data,
+        slot,
+        prune_oldest,
+    );
+    diagnostics::record_result(&app_data, "create_snapshot", Some(slot), &result);
+    result.map_err(Into::into)
 }
 
 #[tauri::command]
@@ -100,8 +107,10 @@ fn restore_snapshot(
         message: error.to_string(),
         context: Default::default(),
     })?;
-    snapshots::restore_snapshot(Path::new(&save_directory), &app_data, &snapshot_id)
-        .map_err(Into::into)
+    let result = snapshots::restore_snapshot(Path::new(&save_directory), &app_data, &snapshot_id);
+    let slot = result.as_ref().ok().map(|restore| restore.slot);
+    diagnostics::record_result(&app_data, "restore_snapshot", slot, &result);
+    result.map_err(Into::into)
 }
 
 #[tauri::command]
@@ -117,8 +126,9 @@ fn update_snapshot_annotation(
         message: error.to_string(),
         context: Default::default(),
     })?;
-    snapshots::update_annotation(&app_data, &snapshot_id, label, note, protected)
-        .map_err(Into::into)
+    let result = snapshots::update_annotation(&app_data, &snapshot_id, label, note, protected);
+    diagnostics::record_result(&app_data, "update_annotation", None, &result);
+    result.map_err(Into::into)
 }
 
 #[tauri::command]
@@ -128,7 +138,9 @@ fn delete_snapshot(app: tauri::AppHandle, snapshot_id: String) -> Result<(), App
         message: error.to_string(),
         context: Default::default(),
     })?;
-    snapshots::delete_snapshot(&app_data, &snapshot_id).map_err(Into::into)
+    let result = snapshots::delete_snapshot(&app_data, &snapshot_id);
+    diagnostics::record_result(&app_data, "delete_snapshot", None, &result);
+    result.map_err(Into::into)
 }
 
 #[tauri::command]
@@ -142,7 +154,9 @@ fn export_snapshot(
         message: error.to_string(),
         context: Default::default(),
     })?;
-    snapshots::export_snapshot(&app_data, &snapshot_id, Path::new(&destination)).map_err(Into::into)
+    let result = snapshots::export_snapshot(&app_data, &snapshot_id, Path::new(&destination));
+    diagnostics::record_result(&app_data, "export_snapshot", None, &result);
+    result.map_err(Into::into)
 }
 
 #[tauri::command]
@@ -152,7 +166,30 @@ fn import_snapshot(app: tauri::AppHandle, source: String) -> Result<SnapshotSumm
         message: error.to_string(),
         context: Default::default(),
     })?;
-    snapshots::import_snapshot(&app_data, Path::new(&source)).map_err(Into::into)
+    let result = snapshots::import_snapshot(&app_data, Path::new(&source));
+    let slot = result.as_ref().ok().map(|snapshot| snapshot.slot);
+    diagnostics::record_result(&app_data, "import_snapshot", slot, &result);
+    result.map_err(Into::into)
+}
+
+#[tauri::command]
+fn load_diagnostics(app: tauri::AppHandle) -> Result<diagnostics::DiagnosticReport, AppError> {
+    let app_data = app.path().app_data_dir().map_err(|error| AppError {
+        code: "app_data_unavailable",
+        message: error.to_string(),
+        context: Default::default(),
+    })?;
+    diagnostics::report(&app_data).map_err(Into::into)
+}
+
+#[tauri::command]
+fn acknowledge_recovery(app: tauri::AppHandle) -> Result<(), AppError> {
+    let app_data = app.path().app_data_dir().map_err(|error| AppError {
+        code: "app_data_unavailable",
+        message: error.to_string(),
+        context: Default::default(),
+    })?;
+    diagnostics::acknowledge_recovery(&app_data).map_err(Into::into)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -161,7 +198,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
-            if let Err(error) = snapshots::recover_interrupted(&app_data) {
+            let recovery = snapshots::recover_interrupted(&app_data);
+            diagnostics::record_recovery(&app_data, &recovery);
+            if let Err(error) = recovery {
                 eprintln!("Failed to recover an interrupted restore: {error}");
             }
             Ok(())
@@ -177,7 +216,9 @@ pub fn run() {
             update_snapshot_annotation,
             delete_snapshot,
             export_snapshot,
-            import_snapshot
+            import_snapshot,
+            load_diagnostics,
+            acknowledge_recovery
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Sailwind Save Manager");

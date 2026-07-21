@@ -1,8 +1,10 @@
 # Sailwind Save Manager
 
+[![CI](https://github.com/Hiosdra/sailwind-save-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Hiosdra/sailwind-save-tool/actions/workflows/ci.yml)
+
 A lightweight, offline-first desktop application for creating and restoring verified Sailwind save backups.
 
-The project is currently an early MVP. It handles raw save bundles without decoding or editing Sailwind's main `.save` payload.
+The project is currently an alpha MVP. It handles raw save bundles without decoding or editing Sailwind's main `.save` payload.
 
 ## Current capabilities
 
@@ -16,6 +18,7 @@ The project is currently an early MVP. It handles raw save bundles without decod
 - protected and recoverable snapshot deletion
 - `.swbackup` ZIP import/export with traversal, symlink, duplicate-entry and resource-limit checks
 - a 50-snapshot retention threshold that never removes protected snapshots without user control
+- privacy-safe JSON Lines operation diagnostics and a persistent startup-recovery notice
 
 ## Development
 
@@ -48,7 +51,9 @@ Create an optimized local build:
 npm run tauri build
 ```
 
-The current Tauri configuration produces an executable without an installer while distribution and signing workflows are being finalized.
+Pull requests build unsigned Windows x64 NSIS, MSI and portable ZIP artifacts in GitHub Actions. Maintainers can use the manual `Draft alpha release` workflow to create a draft prerelease for review; it never publishes a stable release automatically.
+
+Unsigned alpha installers can trigger Microsoft SmartScreen. Verify that an artifact belongs to a successful workflow run in this repository before running it.
 
 ## Safety model
 
@@ -56,7 +61,18 @@ The frontend collects user decisions, while complete filesystem-changing operati
 
 Imported archives and all discovered save artifacts are treated as untrusted input. Symbolic links are not followed.
 
+The diagnostics report intentionally excludes save paths, user names, snapshot labels, notes and save contents. The application has no telemetry or automatic crash reporting.
+
 See [plan-16.md](./plan-16.md) for the accepted product and architecture decisions. The [deep research report](./deep-research-report.md) is supporting research rather than the active implementation specification.
+
+Project guidance:
+
+- [Alpha test checklist](./docs/ALPHA_TEST_CHECKLIST.md)
+- [Release process](./docs/RELEASE_PROCESS.md)
+- [Roadmap](./ROADMAP.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Security policy](./SECURITY.md)
+- [Changelog](./CHANGELOG.md)
 
 ## Author
 

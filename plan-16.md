@@ -30,9 +30,12 @@ As of 2026-07-21, the first local-backup vertical slice is implemented and cover
 - restore with game-process blocking, safety snapshot, staging, rollback and interrupted-operation recovery;
 - labels, retention protection, deletion and the 50-snapshot retention confirmation flow;
 - hardened `.swbackup` import and export;
-- frontend checks/tests, Rust tests, strict Clippy, CI and a successful optimized local build.
+- privacy-safe JSONL operation history, a copyable diagnostic report and a persistent recovery notice;
+- frontend checks/tests, Rust tests, strict Clippy, CI and a successful optimized local build;
+- Windows NSIS/MSI/portable artifact builds for pull requests and a manual draft-prerelease workflow;
+- alpha test, contribution, security, changelog and roadmap documentation.
 
-Still pending from the broader MVP/release plan are polished UI design, a dedicated notes editor, user-facing recovery/diagnostic views, opening data directories, update notification, Windows installer/portable packaging, Playwright desktop workflows and release automation.
+Still pending from the broader MVP/release plan are polished UI design, a dedicated notes editor, opening data directories, update notification, a reviewable diagnostic ZIP, Playwright desktop workflows, code signing and the fully automated nightly/stable release channels described below. Windows packaging must also pass its first hosted CI run and the manual alpha checklist before it is considered release-validated.
 
 ## Confirmed domain facts
 

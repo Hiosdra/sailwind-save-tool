@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
@@ -19,6 +22,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run check
       - run: npm test
       - run: npm run build
@@ -39,3 +43,30 @@ jobs:
       - name: Rust lint
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Build unsigned NSIS and MSI installers
+        run: npm run tauri build -- --bundles nsis,msi --ci
+      - name: Create portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path src-tauri/target/release/sailwind-save-manager.exe -DestinationPath src-tauri/target/release/Sailwind-Save-Manager-portable-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sailwind-save-manager-windows-x64
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/Sailwind-Save-Manager-portable-x64.zip

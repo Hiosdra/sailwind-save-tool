@@ -1,6 +1,6 @@
 <script lang="ts">
   import { native } from './lib/api/native';
-  import type { AppError, SlotSummary, SnapshotSummary } from './lib/api/contracts';
+  import type { AppError, DiagnosticReport, SlotSummary, SnapshotSummary } from './lib/api/contracts';
   import { formatKilobytes } from './lib/format';
   import { onMount } from 'svelte';
   import { open, save } from '@tauri-apps/plugin-dialog';
@@ -11,6 +11,9 @@
   let selectedSlot = $state<number | null>(null);
   let busy = $state(false);
   let error = $state('');
+  let diagnostics = $state<DiagnosticReport | null>(null);
+  let diagnosticsOpen = $state(false);
+  let diagnosticCopied = $state(false);
 
   function describeError(value: unknown): string {
     if (typeof value === 'object' && value !== null && 'message' in value) {
@@ -185,10 +188,66 @@
     }
   }
 
+  async function refreshDiagnostics(): Promise<void> {
+    diagnostics = await native.loadDiagnostics();
+  }
+
+  async function toggleDiagnostics(): Promise<void> {
+    try {
+      diagnosticsOpen = !diagnosticsOpen;
+      if (diagnosticsOpen) await refreshDiagnostics();
+    } catch (cause) {
+      diagnosticsOpen = false;
+      error = describeError(cause);
+    }
+  }
+
+  async function dismissRecovery(): Promise<void> {
+    try {
+      await native.acknowledgeRecovery();
+      await refreshDiagnostics();
+    } catch (cause) {
+      error = describeError(cause);
+    }
+  }
+
+  async function copyDiagnosticReport(): Promise<void> {
+    try {
+      await refreshDiagnostics();
+      await copyText(JSON.stringify(diagnostics, null, 2));
+      diagnosticCopied = true;
+      window.setTimeout(() => (diagnosticCopied = false), 2000);
+    } catch (cause) {
+      error = describeError(cause);
+    }
+  }
+
+  async function copyText(value: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const textArea = document.createElement('textarea');
+    textArea.value = value;
+    textArea.setAttribute('readonly', '');
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    const copied = document.execCommand('copy');
+    textArea.remove();
+    if (!copied) throw new Error('The diagnostic report could not be copied to the clipboard.');
+  }
+
   const selected = $derived(slots.find((slot) => slot.slot === selectedSlot));
   const selectedSnapshots = $derived(snapshots.filter((item) => item.slot === selectedSlot));
 
   onMount(async () => {
+    try {
+      await refreshDiagnostics();
+    } catch (cause) {
+      error = `Diagnostics unavailable: ${describeError(cause)}`;
+    }
     try {
       const settings = await native.loadSettings();
       if (settings.activeSaveDirectory) {
@@ -210,8 +269,36 @@
       <h1>Sailwind Save Manager</h1>
       <p class="subtitle">Immutable, verified snapshots for every voyage.</p>
     </div>
-    <div class="header-actions"><button class="secondary" onclick={importBackup} disabled={busy}>Import .swbackup</button><span class="status">MVP · LOCAL ONLY</span></div>
+    <div class="header-actions"><button class="secondary" onclick={toggleDiagnostics}>Diagnostics</button><button class="secondary" onclick={importBackup} disabled={busy}>Import .swbackup</button><span class="status">0.1.0-alpha.1</span></div>
   </header>
+
+  {#if diagnostics?.recoveryNotice}
+    <section class:failed={diagnostics.recoveryNotice.outcome === 'failed'} class="recovery-banner" role="status">
+      <div><strong>Restore recovery</strong><p>{diagnostics.recoveryNotice.message}</p></div>
+      <button class="secondary compact" onclick={dismissRecovery}>Acknowledge</button>
+    </section>
+  {/if}
+
+  {#if diagnosticsOpen && diagnostics}
+    <section class="diagnostics card" aria-label="Diagnostics">
+      <div class="section-title">
+        <div><p class="eyebrow">PRIVACY-SAFE REPORT</p><h2>Diagnostics</h2></div>
+        <button class="secondary" onclick={copyDiagnosticReport}>{diagnosticCopied ? 'Copied' : 'Copy report'}</button>
+      </div>
+      <p class="privacy-note">{diagnostics.privacyNote}</p>
+      <dl><div><dt>Version</dt><dd>{diagnostics.appVersion}</dd></div><div><dt>Platform</dt><dd>{diagnostics.operatingSystem} · {diagnostics.architecture}</dd></div></dl>
+      <h3>Recent operations</h3>
+      {#if diagnostics.recentOperations.length === 0}
+        <p class="empty">No operations have been recorded yet.</p>
+      {:else}
+        <ol class="operation-log">
+          {#each diagnostics.recentOperations.slice(-8).reverse() as operation}
+            <li><span class:failed={operation.outcome === 'failed'}>{operation.outcome}</span><code>{operation.operation}</code><small>{new Date(operation.occurredAtUtc).toLocaleString()}{operation.errorCode ? ` · ${operation.errorCode}` : ''}</small></li>
+          {/each}
+        </ol>
+      {/if}
+    </section>
+  {/if}
 
   <section class="location card">
     <label for="save-directory">Active save directory</label>

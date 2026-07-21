@@ -1,0 +1,80 @@
+name: Draft alpha release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Prerelease tag, for example v0.1.0-alpha.1
+        required: true
+        default: v0.1.0-alpha.1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: draft-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate prerelease tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "Draft releases must be dispatched from master"
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+            echo "Expected a prerelease tag such as v0.1.0-alpha.1"
+            exit 1
+          fi
+          APP_VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          if [[ "$RELEASE_TAG" != "v$APP_VERSION" ]]; then
+            echo "Tag $RELEASE_TAG does not match application version v$APP_VERSION"
+            exit 1
+          fi
+
+  windows:
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run check
+      - run: npm test
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+      - name: Rust lint
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Build unsigned NSIS and MSI installers
+        run: npm run tauri build -- --bundles nsis,msi --ci
+      - name: Create portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path src-tauri/target/release/sailwind-save-manager.exe -DestinationPath src-tauri/target/release/Sailwind-Save-Manager-portable-x64.zip
+      - name: Create draft prerelease and upload artifacts
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release create $env:RELEASE_TAG --target $env:GITHUB_SHA --draft --prerelease --generate-notes --title "Sailwind Save Manager $env:RELEASE_TAG"
+          Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | ForEach-Object { gh release upload $env:RELEASE_TAG $_.FullName }
+          Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | ForEach-Object { gh release upload $env:RELEASE_TAG $_.FullName }
+          gh release upload $env:RELEASE_TAG src-tauri/target/release/Sailwind-Save-Manager-portable-x64.zip
