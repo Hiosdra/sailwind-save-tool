@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AppSettings, RestoreResult, SlotSummary, SnapshotSummary } from './contracts';
+import type { AppSettings, DiagnosticReport, RestoreResult, SlotSummary, SnapshotSummary } from './contracts';
 
 export const native = {
   loadSettings: () => invoke<AppSettings>('load_settings'),
@@ -28,5 +28,7 @@ export const native = {
   deleteSnapshot: (snapshotId: string) => invoke<void>('delete_snapshot', { snapshotId }),
   exportSnapshot: (snapshotId: string, destination: string) =>
     invoke<void>('export_snapshot', { snapshotId, destination }),
-  importSnapshot: (source: string) => invoke<SnapshotSummary>('import_snapshot', { source })
+  importSnapshot: (source: string) => invoke<SnapshotSummary>('import_snapshot', { source }),
+  loadDiagnostics: () => invoke<DiagnosticReport>('load_diagnostics'),
+  acknowledgeRecovery: () => invoke<void>('acknowledge_recovery')
 };

@@ -42,3 +42,33 @@ export interface AppError {
   message: string;
   context?: Record<string, string>;
 }
+
+export interface OperationRecord {
+  schemaVersion: number;
+  occurredAtUtc: string;
+  operation: string;
+  component: string;
+  severity: 'info' | 'error';
+  eventCode: string;
+  outcome: 'succeeded' | 'failed';
+  errorCode: string | null;
+  slot: number | null;
+}
+
+export interface RecoveryNotice {
+  schemaVersion: number;
+  occurredAtUtc: string;
+  outcome: 'succeeded' | 'failed';
+  message: string;
+}
+
+export interface DiagnosticReport {
+  schemaVersion: number;
+  generatedAtUtc: string;
+  appVersion: string;
+  operatingSystem: string;
+  architecture: string;
+  privacyNote: string;
+  recoveryNotice: RecoveryNotice | null;
+  recentOperations: OperationRecord[];
+}

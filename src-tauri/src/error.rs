@@ -32,6 +32,30 @@ pub enum CoreError {
     InvalidSettings(String),
     #[error("Backup archive is invalid: {0}")]
     InvalidArchive(String),
+    #[error("Diagnostic data is invalid: {0}")]
+    InvalidDiagnostics(String),
+}
+
+impl CoreError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidSaveDirectory => "invalid_save_directory",
+            Self::MissingPrimary(_) => "missing_primary_save",
+            Self::SymbolicLink(_) => "symbolic_link_rejected",
+            Self::OperationBusy => "operation_busy",
+            Self::GameRunning => "game_running",
+            Self::SnapshotNotFound(_) => "snapshot_not_found",
+            Self::SnapshotProtected(_) => "snapshot_protected",
+            Self::RetentionConfirmationRequired(_) => "retention_confirmation_required",
+            Self::Io(_) => "filesystem_error",
+            Self::Database(_) => "database_error",
+            Self::Json(_) => "serialization_error",
+            Self::InvalidSnapshot(_) => "invalid_snapshot",
+            Self::InvalidSettings(_) => "invalid_settings",
+            Self::InvalidArchive(_) => "invalid_archive",
+            Self::InvalidDiagnostics(_) => "invalid_diagnostics",
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -45,22 +69,7 @@ pub struct AppError {
 
 impl From<CoreError> for AppError {
     fn from(error: CoreError) -> Self {
-        let code = match &error {
-            CoreError::InvalidSaveDirectory => "invalid_save_directory",
-            CoreError::MissingPrimary(_) => "missing_primary_save",
-            CoreError::SymbolicLink(_) => "symbolic_link_rejected",
-            CoreError::OperationBusy => "operation_busy",
-            CoreError::GameRunning => "game_running",
-            CoreError::SnapshotNotFound(_) => "snapshot_not_found",
-            CoreError::SnapshotProtected(_) => "snapshot_protected",
-            CoreError::RetentionConfirmationRequired(_) => "retention_confirmation_required",
-            CoreError::Io(_) => "filesystem_error",
-            CoreError::Database(_) => "database_error",
-            CoreError::Json(_) => "serialization_error",
-            CoreError::InvalidSnapshot(_) => "invalid_snapshot",
-            CoreError::InvalidSettings(_) => "invalid_settings",
-            CoreError::InvalidArchive(_) => "invalid_archive",
-        };
+        let code = error.code();
         Self {
             code,
             message: error.to_string(),

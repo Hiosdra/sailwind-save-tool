@@ -188,4 +188,21 @@ mod tests {
             Err(CoreError::MissingPrimary(2))
         ));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symbolic_links_anywhere_in_a_bundle() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        fs::write(temp.path().join("slot1.save"), b"save").unwrap();
+        fs::create_dir(temp.path().join("slot1")).unwrap();
+        symlink(outside.path(), temp.path().join("slot1/redirect")).unwrap();
+
+        assert!(matches!(
+            bundle_entries(temp.path(), 1),
+            Err(CoreError::SymbolicLink(_))
+        ));
+    }
 }

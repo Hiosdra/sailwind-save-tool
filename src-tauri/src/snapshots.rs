@@ -728,8 +728,10 @@ pub fn import_snapshot(app_data: &Path, source: &Path) -> Result<SnapshotSummary
     }
 
     let validation = (|| {
-        let manifest: SnapshotManifest =
-            serde_json::from_reader(fs::File::open(staging.join("manifest.json"))?)?;
+        let manifest: SnapshotManifest = serde_json::from_reader(fs::File::open(
+            staging.join("manifest.json"),
+        )?)
+        .map_err(|error| CoreError::InvalidArchive(format!("Invalid manifest JSON: {error}")))?;
         if manifest.id.parse::<Ulid>().is_err() || manifest.schema_version != 1 || manifest.slot > 5
         {
             return Err(CoreError::InvalidArchive(
@@ -744,7 +746,9 @@ pub fn import_snapshot(app_data: &Path, source: &Path) -> Result<SnapshotSummary
             )));
         }
         let mut annotation: SnapshotAnnotation = if staging.join("annotation.json").is_file() {
-            serde_json::from_reader(fs::File::open(staging.join("annotation.json"))?)?
+            serde_json::from_reader(fs::File::open(staging.join("annotation.json"))?).map_err(
+                |error| CoreError::InvalidArchive(format!("Invalid annotation JSON: {error}")),
+            )?
         } else {
             default_annotation(&manifest.id)
         };
@@ -1209,11 +1213,117 @@ mod tests {
         archive.write_all(b"do not extract").unwrap();
         archive.finish().unwrap();
 
+        let result = import_snapshot(data.path(), &archive_path);
+        assert!(
+            matches!(result, Err(CoreError::InvalidArchive(_))),
+            "unexpected result: {result:?}"
+        );
+        assert!(!data.path().join("outside.txt").exists());
+    }
+
+    #[test]
+    fn swbackup_import_rejects_duplicate_archive_paths() {
+        let data = tempfile::tempdir().unwrap();
+        let archive_path = data.path().join("duplicate.swbackup");
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        archive
+            .start_file("manifest.json", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"{}").unwrap();
+        archive
+            .start_file("manifesz.json", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"{}").unwrap();
+        archive.finish().unwrap();
+        let mut bytes = fs::read(&archive_path).unwrap();
+        for start in 0..=bytes.len() - b"manifesz.json".len() {
+            if &bytes[start..start + b"manifesz.json".len()] == b"manifesz.json" {
+                bytes[start..start + b"manifest.json".len()].copy_from_slice(b"manifest.json");
+            }
+        }
+        fs::write(&archive_path, bytes).unwrap();
+
+        let result = import_snapshot(data.path(), &archive_path);
+        assert!(
+            matches!(result, Err(CoreError::InvalidArchive(_))),
+            "unexpected result: {result:?}"
+        );
+    }
+
+    #[test]
+    fn swbackup_import_rejects_excessive_entry_count_before_extraction() {
+        let data = tempfile::tempdir().unwrap();
+        let archive_path = data.path().join("too-many.swbackup");
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        for index in 0..=MAX_ARCHIVE_ENTRIES {
+            archive
+                .start_file(
+                    format!("bundle/entry-{index}"),
+                    SimpleFileOptions::default(),
+                )
+                .unwrap();
+        }
+        archive.finish().unwrap();
+
         assert!(matches!(
             import_snapshot(data.path(), &archive_path),
             Err(CoreError::InvalidArchive(_))
         ));
-        assert!(!data.path().join("outside.txt").exists());
+        assert!(!data.path().join("imports").exists());
+    }
+
+    #[test]
+    fn swbackup_import_cleans_staging_after_checksum_failure() {
+        let data = tempfile::tempdir().unwrap();
+        let archive_path = data.path().join("bad-checksum.swbackup");
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        let manifest = SnapshotManifest {
+            schema_version: 1,
+            id: Ulid::new().to_string(),
+            slot: 0,
+            created_at_utc: Utc::now().to_rfc3339(),
+            source_directory: "excluded-from-import-trust".to_owned(),
+            files: vec![ManifestFile {
+                relative_path: "slot0.save".to_owned(),
+                size: 4,
+                sha256: "00".repeat(32),
+            }],
+        };
+        archive
+            .start_file("manifest.json", SimpleFileOptions::default())
+            .unwrap();
+        serde_json::to_writer(&mut archive, &manifest).unwrap();
+        archive
+            .start_file("bundle/slot0.save", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"save").unwrap();
+        archive.finish().unwrap();
+
+        assert!(matches!(
+            import_snapshot(data.path(), &archive_path),
+            Err(CoreError::InvalidSnapshot(_))
+        ));
+        let imports = data.path().join("imports");
+        assert!(
+            !imports.exists() || fs::read_dir(imports).unwrap().next().is_none(),
+            "failed imports must not leave staging directories"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn verified_copy_reports_device_out_of_space_without_changing_source() {
+        let source = tempfile::NamedTempFile::new().unwrap();
+        fs::write(source.path(), b"preserve me").unwrap();
+
+        assert!(matches!(
+            copy_verified(source.path(), Path::new("/dev/full")),
+            Err(CoreError::Io(_))
+        ));
+        assert_eq!(fs::read(source.path()).unwrap(), b"preserve me");
     }
 
     #[test]
@@ -1298,6 +1408,44 @@ mod tests {
         );
         assert!(!rollback.exists());
         assert!(!staging.exists());
+    }
+
+    #[test]
+    fn pre_mutation_restore_recovery_only_discards_staging() {
+        let save = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let operation_id = Ulid::new().to_string();
+        let staging = save
+            .path()
+            .join(format!(".sailwind-restore-{operation_id}"));
+        let rollback = save
+            .path()
+            .join(format!(".sailwind-rollback-{operation_id}"));
+        fs::create_dir(&staging).unwrap();
+        fs::create_dir(&rollback).unwrap();
+        fs::write(staging.join("slot3.save"), b"prepared").unwrap();
+        fs::write(save.path().join("slot3.save"), b"live untouched").unwrap();
+
+        let operation_dir = data.path().join("operations");
+        fs::create_dir(&operation_dir).unwrap();
+        let journal = RestoreJournal {
+            schema_version: 1,
+            operation_id,
+            save_directory: save.path().display().to_string(),
+            slot: 3,
+            staging_directory: staging.display().to_string(),
+            rollback_directory: rollback.display().to_string(),
+            original_artifacts: vec!["slot3.save".to_owned()],
+        };
+        write_json_atomic(&operation_dir.join("active-restore.json"), &journal).unwrap();
+
+        assert!(recover_interrupted(data.path()).unwrap());
+        assert_eq!(
+            fs::read(save.path().join("slot3.save")).unwrap(),
+            b"live untouched"
+        );
+        assert!(!staging.exists());
+        assert!(!rollback.exists());
     }
 
     #[test]

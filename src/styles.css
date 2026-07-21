@@ -25,6 +25,21 @@ h2 { margin-bottom: 0; font-size: 18px; }
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .card { background: rgba(30, 27, 22, .94); border: 1px solid #39332b; border-radius: 10px; box-shadow: 0 16px 50px rgba(0,0,0,.18); }
 .location { margin-bottom: 18px; padding: 18px; }
+.recovery-banner { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; border: 1px solid #587052; border-radius: 8px; padding: 14px 16px; color: #cfe0c8; background: #1d2d1e; }
+.recovery-banner.failed { border-color: #79483d; color: #edb5a8; background: #3d201b; }
+.recovery-banner p { margin: 3px 0 0; font-size: 13px; }
+.diagnostics { margin-bottom: 18px; padding: 18px; }
+.diagnostics .privacy-note { color: #b7ab98; font-size: 13px; }
+.diagnostics dl { display: flex; gap: 24px; margin: 14px 0 18px; }
+.diagnostics dl div { display: grid; gap: 3px; }
+.diagnostics dt { color: #82796d; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.diagnostics dd { margin: 0; color: #ded3c1; font-size: 13px; }
+.diagnostics h3 { margin: 0 0 8px; font-size: 13px; }
+.operation-log { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.operation-log li { display: grid; grid-template-columns: 72px 160px 1fr; align-items: center; gap: 10px; border-top: 1px solid #353028; padding: 7px 0; }
+.operation-log span { color: #9fc29c; font-size: 11px; text-transform: uppercase; }
+.operation-log span.failed { color: #df9b8b; }
+.operation-log small { text-align: right; }
 label { display: block; margin-bottom: 9px; color: #bdb2a2; font-size: 12px; font-weight: 700; }
 .location-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; }
 input { width: 100%; border: 1px solid #4b4237; border-radius: 7px; padding: 10px 12px; outline: none; color: #eee5d5; background: #12110e; }
