@@ -62,7 +62,7 @@ jobs:
       - name: Create portable ZIP
         shell: pwsh
         run: Compress-Archive -Path src-tauri/target/release/sailwind-save-manager.exe -DestinationPath src-tauri/target/release/Sailwind-Save-Manager-portable-x64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sailwind-save-manager-windows-x64
           if-no-files-found: error
