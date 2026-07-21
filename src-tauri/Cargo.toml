@@ -1,6 +1,6 @@
 [package]
 name = "sailwind-save-manager"
-version = "0.1.0-alpha.1"
+version = "0.1.0-1"
 description = "Safe local backup manager for Sailwind saves"
 authors = ["hiosdra"]
 license = "AGPL-3.0-only"

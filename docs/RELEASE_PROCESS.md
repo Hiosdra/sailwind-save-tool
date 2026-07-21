@@ -12,7 +12,7 @@ The alpha pipeline is intentionally review-gated. It creates an unsigned draft p
 ## Build a draft
 
 1. Open **Actions → Draft alpha release → Run workflow**.
-2. Select `master` and enter the exact prerelease tag represented by the application version, for example `v0.1.0-alpha.1`.
+2. Select `master` and enter the exact prerelease tag represented by the application version, for example `v0.1.0-1`.
 3. The workflow validates the tag/version pair, runs frontend and Rust checks, then builds unsigned x64 NSIS, MSI and portable ZIP artifacts.
 4. The workflow creates a draft GitHub prerelease. It does not publish the release.
 

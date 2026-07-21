@@ -269,7 +269,7 @@
       <h1>Sailwind Save Manager</h1>
       <p class="subtitle">Immutable, verified snapshots for every voyage.</p>
     </div>
-    <div class="header-actions"><button class="secondary" onclick={toggleDiagnostics}>Diagnostics</button><button class="secondary" onclick={importBackup} disabled={busy}>Import .swbackup</button><span class="status">0.1.0-alpha.1</span></div>
+    <div class="header-actions"><button class="secondary" onclick={toggleDiagnostics}>Diagnostics</button><button class="secondary" onclick={importBackup} disabled={busy}>Import .swbackup</button><span class="status">0.1.0-1</span></div>
   </header>
 
   {#if diagnostics?.recoveryNotice}

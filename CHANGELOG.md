@@ -13,6 +13,6 @@ All notable changes are documented here. The project follows [Semantic Versionin
 - Security, contribution, roadmap and alpha-testing documentation.
 - Regression coverage for restore recovery phases, hostile archives, symbolic links and failed writes.
 
-## [0.1.0-alpha.1] - Unreleased
+## [0.1.0-1] - Unreleased
 
 Initial alpha milestone for verified local Sailwind save snapshots and restores.
