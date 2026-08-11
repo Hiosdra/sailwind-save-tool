@@ -17,14 +17,14 @@ tauri-build = { version = "2", features = [] }
 chrono = { version = "0.4", features = ["serde"] }
 fs2 = "0.4"
 hex = "0.4"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
-sysinfo = "0.37"
+sha2 = "0.11"
+sysinfo = "0.39"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tempfile = "3"
 thiserror = "2"
-ulid = { version = "1", features = ["serde"] }
-zip = { version = "4", default-features = false, features = ["deflate"] }
+ulid = { version = "3", features = ["serde"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
