@@ -83,7 +83,7 @@ fn create_snapshot_unlocked(
     slot: u8,
 ) -> Result<SnapshotSummary, CoreError> {
     let entries = saves::bundle_entries(save_root, slot)?;
-    let id = Ulid::new().to_string();
+    let id = Ulid::generate().to_string();
     let slot_root = app_data.join("snapshots").join(format!("slot{slot}"));
     fs::create_dir_all(&slot_root)?;
     let staging = slot_root.join(format!(".staging-{id}"));
@@ -172,7 +172,7 @@ pub fn restore_snapshot(
         None => None,
     };
 
-    let operation_id = Ulid::new().to_string();
+    let operation_id = Ulid::generate().to_string();
     let staging = save_root.join(format!(".sailwind-restore-{operation_id}"));
     let rollback = save_root.join(format!(".sailwind-rollback-{operation_id}"));
     fs::create_dir(&staging)?;
@@ -546,8 +546,16 @@ pub fn list_snapshots(
             row.get(0)?,
             row.get(1)?,
             row.get(2)?,
-            row.get(3)?,
-            row.get(4)?,
+            {
+                let value = row.get::<_, i64>(3)?;
+                usize::try_from(value)
+                    .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(3, value))?
+            },
+            {
+                let value = row.get::<_, i64>(4)?;
+                u64::try_from(value)
+                    .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(4, value))?
+            },
         ))
     };
     let rows = if let Some(slot) = slot {
@@ -716,7 +724,7 @@ pub fn import_snapshot(app_data: &Path, source: &Path) -> Result<SnapshotSummary
         ));
     }
 
-    let import_id = Ulid::new().to_string();
+    let import_id = Ulid::generate().to_string();
     let staging = app_data
         .join("imports")
         .join(format!(".staging-{import_id}"));
@@ -796,9 +804,9 @@ fn extract_archive(
     let mut seen = std::collections::BTreeSet::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(zip_error)?;
-        let enclosed = entry.enclosed_name().ok_or_else(|| {
-            CoreError::InvalidArchive(format!("Unsafe archive path: {}", entry.name()))
-        })?;
+        let enclosed = entry
+            .enclosed_name()
+            .ok_or_else(|| CoreError::InvalidArchive("Unsafe archive path".into()))?;
         let normalized = relative_string(&enclosed);
         if !seen.insert(normalized.clone()) {
             return Err(CoreError::InvalidArchive(format!(
@@ -978,9 +986,15 @@ fn index_snapshot_with(
     path: &Path,
     summary: &SnapshotSummary,
 ) -> Result<(), CoreError> {
+    let file_count = i64::try_from(summary.file_count).map_err(|_| {
+        CoreError::InvalidSnapshot("File count exceeds SQLite integer range".into())
+    })?;
+    let total_size = i64::try_from(summary.total_size).map_err(|_| {
+        CoreError::InvalidSnapshot("Total size exceeds SQLite integer range".into())
+    })?;
     connection.execute(
         "INSERT INTO snapshots(id, slot, created_at_utc, file_count, total_size, snapshot_path) VALUES(?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO UPDATE SET slot=excluded.slot, created_at_utc=excluded.created_at_utc, file_count=excluded.file_count, total_size=excluded.total_size, snapshot_path=excluded.snapshot_path",
-        params![summary.id, summary.slot, summary.created_at_utc, summary.file_count, summary.total_size, path.display().to_string()],
+        params![summary.id, summary.slot, summary.created_at_utc, file_count, total_size, path.display().to_string()],
     )?;
     Ok(())
 }
@@ -1073,6 +1087,26 @@ fn relative_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_rejects_snapshot_sizes_outside_sqlite_integer_range() {
+        let source = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        fs::write(source.path().join("slot1.save"), b"save").unwrap();
+        let mut summary = create_snapshot(source.path(), data.path(), 1).unwrap();
+        let connection = open_index(data.path()).unwrap();
+        let path = data.path().join("snapshots/slot1").join(&summary.id);
+
+        summary.total_size = u64::MAX;
+        assert!(matches!(
+            index_snapshot_with(&connection, &path, &summary),
+            Err(CoreError::InvalidSnapshot(_))
+        ));
+        let total_size: i64 = connection
+            .query_row("SELECT total_size FROM snapshots", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(total_size, 4);
+    }
 
     #[test]
     fn creates_immutable_snapshot_and_rebuildable_index() {
@@ -1282,7 +1316,7 @@ mod tests {
         let mut archive = ZipWriter::new(file);
         let manifest = SnapshotManifest {
             schema_version: 1,
-            id: Ulid::new().to_string(),
+            id: Ulid::generate().to_string(),
             slot: 0,
             created_at_utc: Utc::now().to_rfc3339(),
             source_directory: "excluded-from-import-trust".to_owned(),
@@ -1374,7 +1408,7 @@ mod tests {
     fn committed_restore_recovery_keeps_verified_live_bundle() {
         let save = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();
-        let operation_id = Ulid::new().to_string();
+        let operation_id = Ulid::generate().to_string();
         let staging = save
             .path()
             .join(format!(".sailwind-restore-{operation_id}"));
@@ -1414,7 +1448,7 @@ mod tests {
     fn pre_mutation_restore_recovery_only_discards_staging() {
         let save = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();
-        let operation_id = Ulid::new().to_string();
+        let operation_id = Ulid::generate().to_string();
         let staging = save
             .path()
             .join(format!(".sailwind-restore-{operation_id}"));
@@ -1452,7 +1486,7 @@ mod tests {
     fn uncommitted_restore_recovery_rolls_back_previous_bundle() {
         let save = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();
-        let operation_id = Ulid::new().to_string();
+        let operation_id = Ulid::generate().to_string();
         let staging = save
             .path()
             .join(format!(".sailwind-restore-{operation_id}"));
@@ -1492,7 +1526,7 @@ mod tests {
         let save = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();
-        let operation_id = Ulid::new().to_string();
+        let operation_id = Ulid::generate().to_string();
         let rollback = save
             .path()
             .join(format!(".sailwind-rollback-{operation_id}"));
