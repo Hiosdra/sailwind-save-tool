@@ -804,9 +804,9 @@ fn extract_archive(
     let mut seen = std::collections::BTreeSet::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(zip_error)?;
-        let enclosed = entry.enclosed_name().ok_or_else(|| {
-            CoreError::InvalidArchive("Unsafe archive path".into())
-        })?;
+        let enclosed = entry
+            .enclosed_name()
+            .ok_or_else(|| CoreError::InvalidArchive("Unsafe archive path".into()))?;
         let normalized = relative_string(&enclosed);
         if !seen.insert(normalized.clone()) {
             return Err(CoreError::InvalidArchive(format!(
@@ -986,10 +986,12 @@ fn index_snapshot_with(
     path: &Path,
     summary: &SnapshotSummary,
 ) -> Result<(), CoreError> {
-    let file_count = i64::try_from(summary.file_count)
-        .map_err(|_| CoreError::InvalidSnapshot("File count exceeds SQLite integer range".into()))?;
-    let total_size = i64::try_from(summary.total_size)
-        .map_err(|_| CoreError::InvalidSnapshot("Total size exceeds SQLite integer range".into()))?;
+    let file_count = i64::try_from(summary.file_count).map_err(|_| {
+        CoreError::InvalidSnapshot("File count exceeds SQLite integer range".into())
+    })?;
+    let total_size = i64::try_from(summary.total_size).map_err(|_| {
+        CoreError::InvalidSnapshot("Total size exceeds SQLite integer range".into())
+    })?;
     connection.execute(
         "INSERT INTO snapshots(id, slot, created_at_utc, file_count, total_size, snapshot_path) VALUES(?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO UPDATE SET slot=excluded.slot, created_at_utc=excluded.created_at_utc, file_count=excluded.file_count, total_size=excluded.total_size, snapshot_path=excluded.snapshot_path",
         params![summary.id, summary.slot, summary.created_at_utc, file_count, total_size, path.display().to_string()],
@@ -1085,6 +1087,26 @@ fn relative_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_rejects_snapshot_sizes_outside_sqlite_integer_range() {
+        let source = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        fs::write(source.path().join("slot1.save"), b"save").unwrap();
+        let mut summary = create_snapshot(source.path(), data.path(), 1).unwrap();
+        let connection = open_index(data.path()).unwrap();
+        let path = data.path().join("snapshots/slot1").join(&summary.id);
+
+        summary.total_size = u64::MAX;
+        assert!(matches!(
+            index_snapshot_with(&connection, &path, &summary),
+            Err(CoreError::InvalidSnapshot(_))
+        ));
+        let total_size: i64 = connection
+            .query_row("SELECT total_size FROM snapshots", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(total_size, 4);
+    }
 
     #[test]
     fn creates_immutable_snapshot_and_rebuildable_index() {
